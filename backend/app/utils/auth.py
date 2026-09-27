@@ -33,15 +33,25 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         if bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8')):
             return True
-        # If production mode configured custom DEMO_ACCOUNT_PASSWORD / GUEST_DEMO_PASSWORD,
-        # also accept default demo button credentials ('password123' / 'guest123') for 1-click UI evaluation.
-        if plain_password in ("password123", "guest123"):
-            demo_pass = os.getenv("DEMO_ACCOUNT_PASSWORD", "").strip()
-            guest_pass = os.getenv("GUEST_DEMO_PASSWORD", "").strip()
-            if demo_pass and bcrypt.checkpw(demo_pass.encode('utf-8'), hashed_password.encode('utf-8')):
+
+        demo_pass = os.getenv("DEMO_ACCOUNT_PASSWORD", "").strip()
+        guest_pass = os.getenv("GUEST_DEMO_PASSWORD", "").strip()
+
+        # Bidirectional match between default UI demo credentials and production env credentials
+        if plain_password == "password123" and demo_pass:
+            if bcrypt.checkpw(demo_pass.encode('utf-8'), hashed_password.encode('utf-8')):
                 return True
-            if guest_pass and bcrypt.checkpw(guest_pass.encode('utf-8'), hashed_password.encode('utf-8')):
+        if plain_password == "guest123" and guest_pass:
+            if bcrypt.checkpw(guest_pass.encode('utf-8'), hashed_password.encode('utf-8')):
                 return True
+
+        if demo_pass and plain_password == demo_pass:
+            if bcrypt.checkpw("password123".encode('utf-8'), hashed_password.encode('utf-8')):
+                return True
+        if guest_pass and plain_password == guest_pass:
+            if bcrypt.checkpw("guest123".encode('utf-8'), hashed_password.encode('utf-8')):
+                return True
+
         return False
     except Exception:
         return False
