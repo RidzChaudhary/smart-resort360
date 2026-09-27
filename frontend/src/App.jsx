@@ -11,6 +11,9 @@ import { Forecast } from './pages/Forecast';
 import { Inventory } from './pages/Inventory';
 import { ActivityLog } from './pages/ActivityLog';
 import { GuestRequest } from './pages/GuestRequest';
+import { GuestIntelligence } from './pages/GuestIntelligence';
+import { GuestExperiences } from './pages/GuestExperiences';
+import { WeatherIntelligence } from './pages/WeatherIntelligence';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -47,6 +50,7 @@ function AppRouter() {
           {/* Public Routes */}
           <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
           <Route path="/guest-request" element={<GuestRequest />} />
+          <Route path="/guest-experiences" element={<GuestExperiences />} />
 
           {/* Manager Routes */}
           <Route
@@ -62,7 +66,7 @@ function AppRouter() {
           <Route
             path="/front-desk"
             element={
-              <ProtectedRoute allowedRoles={['MANAGER', 'FRONT_DESK']}>
+              <ProtectedRoute allowedRoles={['FRONT_DESK']}>
                 <FrontDeskDashboard />
               </ProtectedRoute>
             }
@@ -114,6 +118,24 @@ function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={['MANAGER']}>
                 <ActivityLog />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/guest-intelligence"
+            element={
+              <ProtectedRoute allowedRoles={['MANAGER']}>
+                <GuestIntelligence />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/weather"
+            element={
+              <ProtectedRoute allowedRoles={['MANAGER', 'DEPARTMENT_HEAD']}>
+                <WeatherIntelligence />
               </ProtectedRoute>
             }
           />

@@ -105,16 +105,28 @@ Frontend will run at: http://localhost:3000
 
 ## 👥 Demo Credentials
 
-The seed script creates 4 role-based demo accounts:
+The seed script creates demo accounts for the Manager, Front Desk, four Department Heads, and operational staff:
 
 | Role | Email | Password | Access |
 |------|-------|----------|--------|
 | **Manager** | manager@resort360.com | password123 | Full system access, AI recommendations, approvals |
 | **Front Desk** | frontdesk@resort360.com | password123 | Check-ins/outs, room readiness, guest requests |
 | **Housekeeping Lead** | housekeeping.head@resort360.com | password123 | Department workload, task assignment |
+| **Maintenance Lead** | maintenance.head@resort360.com | password123 | Department workload, task assignment, escalation |
+| **Food & Beverage Lead** | fb.head@resort360.com | password123 | Department workload, task assignment, escalation |
+| **Inventory Lead** | inventory.head@resort360.com | password123 | Department workload, task assignment, escalation |
+| **Guest Demo** | guest.demo@resort360.com | guest123 | Guest recommendations, service requests, activities, feedback |
 | **Staff** | staff.elena@resort360.com | password123 | My tasks, status updates |
 
 **Guest Access**: Navigate to `/guest-request` (no login required) to submit QR-style service requests.
+
+## Guest Intelligence MVP
+
+Guests can open `/guest-experiences` and sign in with the Guest Demo account, or verify another active stay with its room number and reservation name. The guest portal groups **Recommended**, **My Requests**, **My Activities**, and **Feedback** in one account. Recommendations use recorded stay context, activity interactions and ratings, listed availability, and manager-maintained crowd levels. Guest responses do not expose another guest's identity.
+
+Managers can open **Guest Intelligence** from the Manager navigation to review aggregate stay segments, 14-day interaction trends, negative feedback topics, and maintain the resort activity catalog. Availability and crowd levels are manager-maintained values, not live telemetry. Feedback sentiment and topic detection is lightweight and does not automatically create operational tasks.
+
+The API is grouped under `/api/guest-intelligence`: guest login/session/profile/activity/recommendation/interaction/feedback/request endpoints and Manager-only activity management and aggregate overview endpoints. The demo seed includes four labeled training activities, six pseudonymous training profiles with interaction/feedback history, and three labeled Guest Demo requests. These samples are kept out of live operations queues and live trend/feedback aggregates. New tables and training flags are added without dropping existing V1/V2 tables.
 
 ---
 
@@ -411,6 +423,52 @@ PYTHONPATH=. uvicorn app.main:app --reload
 **API connection refused**:
 - Ensure backend is running on port 8000
 - Check `.env` file: `VITE_API_URL=http://localhost:8000`
+
+---
+
+## Production Deployment (Vercel + Render + PostgreSQL)
+
+Deployment manifests are provided in `frontend/vercel.json` and the repository-root `render.yaml`. No public deployment is configured by this repository alone; the deployment owner must connect the project and provide the service-specific values below.
+
+### Vercel
+
+Set the Vercel project root to `frontend`. The Vite build outputs `dist`, and `vercel.json` rewrites browser routes to `index.html` so direct links and refreshes work. Configure this public build variable:
+
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | The HTTPS origin of the deployed Render API, for example `https://your-api-service.onrender.com` |
+
+Production frontend builds fail if `VITE_API_URL` is missing. Do not put database URLs, JWT secrets, or service-role keys in Vercel frontend variables.
+
+### Render API
+
+Create a Render Blueprint from `render.yaml` or create a Web Service with root directory `backend`, Python 3.11.9, build command `pip install -r requirements.txt`, start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, and health path `/health`. Configure these values in Render; never commit their values:
+
+| Variable | Required value |
+|---|---|
+| `APP_ENV` | `production` |
+| `DATABASE_URL` | PostgreSQL connection string from Supabase or another managed PostgreSQL provider |
+| `SECRET_KEY` | Unique generated signing secret (Render Blueprint generates one) |
+| `CORS_ORIGINS` | Exact HTTPS Vercel production origin(s), comma-separated; no wildcard |
+| `DEMO_ACCOUNT_PASSWORD` | Unique password of at least 16 characters for seeded staff/manager demo accounts |
+| `GUEST_DEMO_PASSWORD` | Unique password of at least 16 characters for the seeded guest demo account |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Optional; Blueprint sets 60 |
+
+The backend refuses to start in production without PostgreSQL, a strong JWT secret, or explicit CORS origins. `/health` executes a database query and returns `503` when PostgreSQL is unavailable. Demo reset/seed endpoints are disabled in production.
+
+### Initial Synthetic Data
+
+After setting the Render environment variables and confirming the PostgreSQL connection, run this **one-time** command from the backend service shell or a secure local environment configured with the production `DATABASE_URL` and password variables:
+
+```bash
+python -m app.database.seed
+```
+
+The default seed is additive and skips seeding if a resort already exists. It does not delete data. `python -m app.database.seed --reset` is destructive and is refused in production. New tables are created additively on startup. Back up PostgreSQL before any schema or seed operation.
+
+### What Has and Has Not Been Verified
+
+The local verification checks backend tests, frontend builds, and live local API workflows. A real Vercel/Render deployment, external PostgreSQL credentials/networking, production CORS origin, and public URL cannot be marked verified until those deployment values are configured and tested in the provider dashboards. Do not treat local SQLite or localhost checks as proof of production persistence.
 
 **Build errors**:
 ```bash

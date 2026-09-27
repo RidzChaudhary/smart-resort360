@@ -169,6 +169,9 @@ App: http://localhost:3000
 | Manager | manager@resort360.com | password123 |
 | Front Desk | frontdesk@resort360.com | password123 |
 | Housekeeping Lead | housekeeping.head@resort360.com | password123 |
+| Maintenance Lead | maintenance.head@resort360.com | password123 |
+| Food & Beverage Lead | fb.head@resort360.com | password123 |
+| Inventory Lead | inventory.head@resort360.com | password123 |
 | Staff | staff.elena@resort360.com | password123 |
 
 ---

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -13,6 +13,8 @@ import {
   Users,
   CheckSquare,
   RotateCcw,
+  Sparkles,
+  CloudSun,
   Menu,
   X
 } from 'lucide-react';
@@ -24,8 +26,38 @@ export const Navbar = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [guestAccount, setGuestAccount] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('guestAccount') || 'null');
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const syncGuestAccount = () => {
+      try {
+        setGuestAccount(JSON.parse(sessionStorage.getItem('guestAccount') || 'null'));
+      } catch {
+        setGuestAccount(null);
+      }
+    };
+    window.addEventListener('guest-session-changed', syncGuestAccount);
+    window.addEventListener('storage', syncGuestAccount);
+    return () => {
+      window.removeEventListener('guest-session-changed', syncGuestAccount);
+      window.removeEventListener('storage', syncGuestAccount);
+    };
+  }, []);
 
   const handleLogout = () => {
+    if (guestAccount) {
+      sessionStorage.removeItem('guestToken');
+      sessionStorage.removeItem('guestAccount');
+      setGuestAccount(null);
+      navigate('/login');
+      return;
+    }
     logout();
     navigate('/login');
   };
@@ -50,7 +82,7 @@ export const Navbar = () => {
     const links = [];
 
     if (!user) {
-      return [{ name: 'Guest Request', path: '/guest-request', icon: QrCode }];
+      return [];
     }
 
     // Role-specific main dashboard
@@ -58,14 +90,16 @@ export const Navbar = () => {
       links.push({ name: 'Manager HQ', path: '/dashboard', icon: LayoutDashboard });
       links.push({ name: '7-Day Forecast', path: '/forecast', icon: Calendar });
       links.push({ name: 'Inventory & POs', path: '/inventory', icon: Package });
-      links.push({ name: 'Front Desk', path: '/front-desk', icon: Building2 });
       links.push({ name: 'Activity Log', path: '/activity-log', icon: History });
+      links.push({ name: 'Guest Intelligence', path: '/guest-intelligence', icon: Sparkles });
+      links.push({ name: 'Weather & Digital Twin', path: '/weather', icon: CloudSun });
     } else if (user.role === 'FRONT_DESK') {
       links.push({ name: 'Front Desk', path: '/front-desk', icon: Building2 });
       links.push({ name: 'Guest Requests', path: '/guest-request', icon: QrCode });
     } else if (user.role === 'DEPARTMENT_HEAD') {
       links.push({ name: 'Department Ops', path: '/department', icon: Users });
       links.push({ name: 'Forecast', path: '/forecast', icon: Calendar });
+      links.push({ name: 'Weather & Digital Twin', path: '/weather', icon: CloudSun });
     } else if (user.role === 'STAFF') {
       links.push({ name: 'My Tasks', path: '/staff', icon: CheckSquare });
     }
@@ -117,9 +151,9 @@ export const Navbar = () => {
 
           {/* Right Side - User Info & Actions */}
           <div className="hidden md:flex items-center space-x-3">
-            {user ? (
+            {user || guestAccount ? (
               <>
-                {user.role === 'MANAGER' && (
+                {user?.role === 'MANAGER' && import.meta.env.DEV && (
                   <button
                     onClick={handleResetDemo}
                     disabled={isResetting}
@@ -133,11 +167,11 @@ export const Navbar = () => {
 
                 <div className="flex items-center space-x-2 pl-2 border-l border-ivory-300">
                   <div className="w-8 h-8 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-xs font-bold text-forest-900">
-                    {user.name.split(' ').map((n) => n[0]).join('')}
+                    {(guestAccount?.name || user.name).split(' ').map((n) => n[0]).join('')}
                   </div>
                   <div className="text-left text-xs">
-                    <p className="font-semibold text-charcoal-900">{user.name}</p>
-                    <p className="text-charcoal-500 text-[10px] uppercase">{user.role.replace('_', ' ')}</p>
+                    <p className="font-semibold text-charcoal-900">{guestAccount?.name || user.name}</p>
+                    <p className="text-charcoal-500 text-[10px] uppercase">{guestAccount ? 'GUEST' : user.role.replace('_', ' ')}</p>
                   </div>
                 </div>
 
@@ -149,21 +183,14 @@ export const Navbar = () => {
                   <LogOut className="w-4 h-4" />
                 </button>
               </>
-            ) : (
-              <Link
-                to="/login"
-                className="btn-primary"
-              >
-                Sign In
-              </Link>
-            )}
+            ) : null}
           </div>
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-slate-400 hover:text-white"
+              className="p-2 text-charcoal-700 hover:text-charcoal-900"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -173,7 +200,7 @@ export const Navbar = () => {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 pt-2 pb-4 space-y-1">
+        <div className="md:hidden bg-white border-b border-ivory-300 px-4 pt-2 pb-4 space-y-1 shadow-md">
           {navLinks.map((link) => {
             const Icon = link.icon;
             const isActive = location.pathname === link.path;
@@ -182,8 +209,8 @@ export const Navbar = () => {
                 key={link.path}
                 to={link.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive ? 'bg-sky-500/10 text-sky-400' : 'text-slate-300 hover:bg-slate-800'
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                  isActive ? 'bg-forest-50 text-forest-900 border border-forest-200' : 'text-charcoal-700 hover:bg-ivory-100'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -191,15 +218,15 @@ export const Navbar = () => {
               </Link>
             );
           })}
-          {user && (
-            <div className="pt-4 mt-2 border-t border-slate-800 flex justify-between items-center">
-              <div className="text-xs text-slate-300">
-                <p className="font-semibold">{user.name}</p>
-                <p className="text-slate-500">{user.role}</p>
+          {(user || guestAccount) && (
+            <div className="pt-4 mt-2 border-t border-ivory-200 flex justify-between items-center">
+              <div className="text-xs text-charcoal-900">
+                <p className="font-bold">{guestAccount?.name || user.name}</p>
+                <p className="text-charcoal-500 font-medium">{guestAccount ? 'GUEST' : user.role.replace('_', ' ')}</p>
               </div>
               <button
                 onClick={handleLogout}
-                className="px-3 py-1.5 text-xs text-red-400 bg-red-500/10 rounded border border-red-500/30"
+                className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 rounded-lg border border-red-200 hover:bg-red-100"
               >
                 Logout
               </button>
@@ -210,3 +237,4 @@ export const Navbar = () => {
     </nav>
   );
 };
+

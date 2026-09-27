@@ -140,19 +140,19 @@ export const RecommendationCard = ({
 
       {/* Modify Modal */}
       {showModifyModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-              <Edit3 className="w-5 h-5 text-indigo-400" />
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="surface border border-ivory-300 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-lg font-bold text-charcoal-900 flex items-center gap-2">
+              <Edit3 className="w-5 h-5 text-forest-700" />
               Modify Recommendation Parameters
             </h3>
-            <p className="text-xs text-slate-400 mb-4">
+            <p className="text-xs text-charcoal-600">
               Adjust recommended values before approving. The closed-loop engine will create the department action with your modified target.
             </p>
 
             <form onSubmit={handleModifySubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-bold text-charcoal-700 uppercase tracking-wider mb-1">
                   {recommendation.type === 'staffing' ? 'Adjust Staff Count (Shifts)' : 'Adjust Order Quantity'}
                 </label>
                 <input
@@ -162,12 +162,12 @@ export const RecommendationCard = ({
                   required
                   value={modifiedQuantity}
                   onChange={(e) => setModifiedQuantity(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500 font-mono"
+                  className="w-full bg-white border border-ivory-300 rounded-lg px-3 py-2 text-charcoal-900 text-sm focus:outline-none focus:ring-2 focus:ring-forest-500 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-bold text-charcoal-700 uppercase tracking-wider mb-1">
                   Manager Adjustment Reason / Notes
                 </label>
                 <textarea
@@ -175,21 +175,21 @@ export const RecommendationCard = ({
                   value={modifyNotes}
                   onChange={(e) => setModifyNotes(e.target.value)}
                   placeholder="e.g. VIP group arriving early, adding 1 extra shift buffer..."
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500 resize-none"
+                  className="w-full bg-white border border-ivory-300 rounded-lg px-3 py-2 text-charcoal-900 text-sm placeholder-charcoal-400 focus:outline-none focus:ring-2 focus:ring-forest-500 resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-ivory-200">
                 <button
                   type="button"
                   onClick={() => setShowModifyModal(false)}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs font-medium"
+                  className="px-4 py-2 bg-white border border-ivory-300 hover:bg-ivory-50 text-charcoal-700 rounded-lg text-xs font-semibold shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow-md"
+                  className="px-4 py-2 bg-forest-800 hover:bg-forest-900 text-white rounded-lg text-xs font-bold shadow-sm transition"
                 >
                   Confirm & Execute Modified Action
                 </button>
@@ -201,3 +201,4 @@ export const RecommendationCard = ({
     </div>
   );
 };
+

@@ -212,16 +212,19 @@ button, input, textarea, select { font: inherit; }
 }
 
 /* Keep legacy page utilities aligned with the centralized palette. */
-.bg-slate-800\/80, .bg-slate-800\/90, .bg-slate-800\/50, .bg-slate-900\/60,
+/* NOTE: .bg-slate-* overrides map the old dark-mode palette to the light ivory/forest theme. */
+.bg-slate-800\/80, .bg-slate-800\/90, .bg-slate-800\/50, .bg-slate-900\/80, .bg-slate-900\/70, .bg-slate-900\/60,
 .bg-slate-900\/50, .bg-slate-900\/30, .bg-slate-900 {
   background-color: var(--color-surface) !important;
 }
 .bg-slate-950 { background-color: var(--color-bg) !important; }
 .border-slate-800, .border-slate-700, .border-slate-700\/80, .border-slate-700\/60,
 .border-slate-800\/60 { border-color: var(--color-border) !important; }
-.text-white { color: var(--color-text-primary) !important; }
+/* Do NOT override .text-white globally — white text must stay white on dark
+   backgrounds such as buttons (bg-forest-800), badges, and sidebar items. */
 .text-slate-300, .text-slate-400, .text-slate-500 { color: var(--color-text-secondary) !important; }
 .btn-primary { color: #FFFFFF !important; }
 .btn-primary svg { color: #FFFFFF !important; }
+.btn-checkout { color: #FFFFFF !important; }
 .hover\:bg-slate-800:hover, .hover\:bg-slate-700:hover { background-color: var(--color-surface-2) !important; }
 .backdrop-blur, .backdrop-blur-sm { backdrop-filter: none; }
