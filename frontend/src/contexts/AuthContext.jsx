@@ -29,9 +29,14 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true, user: userData };
     } catch (error) {
+      const errorMessage =
+        error.response?.data?.detail ||
+        (!error.response
+          ? 'Cannot connect to backend API server. Please check if the backend service is running and CORS is configured.'
+          : 'Login failed');
       return {
         success: false,
-        error: error.response?.data?.detail || 'Login failed'
+        error: errorMessage
       };
     }
   };

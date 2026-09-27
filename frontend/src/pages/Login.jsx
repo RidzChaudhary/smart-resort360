@@ -46,7 +46,12 @@ export const Login = () => {
         window.dispatchEvent(new Event('guest-session-changed'));
         navigate('/guest-experiences');
       } catch (requestError) {
-        setError(requestError.response?.data?.detail || 'Guest demo login failed.');
+        const errorMsg =
+          requestError.response?.data?.detail ||
+          (!requestError.response
+            ? 'Cannot connect to backend API server. Please check if the backend service is running.'
+            : 'Guest demo login failed.');
+        setError(errorMsg);
       } finally {
         setIsLoading(false);
       }
