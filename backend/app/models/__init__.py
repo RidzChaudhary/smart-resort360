@@ -1,7 +1,12 @@
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database.connection import Base
+
+# Phase 1 – import new models so they are registered with the same Base
+from app.models.resort_event import ResortEvent        # noqa: F401 – registers table
+from app.models.location import ResortLocation         # noqa: F401 – registers table
+from app.models.weather_cache import WeatherCache      # noqa: F401 – registers table
 
 class Resort(Base):
     __tablename__ = "resorts"
@@ -10,6 +15,8 @@ class Resort(Base):
     name = Column(String(255), nullable=False)
     total_rooms = Column(Integer, default=100)
     address = Column(String(500), nullable=True)
+    latitude = Column(Float, nullable=True)  # Geospatial coordinates
+    longitude = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     departments = relationship("Department", back_populates="resort", cascade="all, delete-orphan")
@@ -22,6 +29,14 @@ class Resort(Base):
     purchase_orders = relationship("PurchaseOrder", back_populates="resort", cascade="all, delete-orphan")
     guest_requests = relationship("GuestRequest", back_populates="resort", cascade="all, delete-orphan")
     activity_logs = relationship("ActivityLog", back_populates="resort", cascade="all, delete-orphan")
+    guest_profiles = relationship("GuestProfile", back_populates="resort", cascade="all, delete-orphan")
+    resort_activities = relationship("ResortActivity", back_populates="resort", cascade="all, delete-orphan")
+    guest_feedback = relationship("GuestFeedback", back_populates="resort", cascade="all, delete-orphan")
+    guest_accounts = relationship("GuestAccount", back_populates="resort", cascade="all, delete-orphan")
+    guest_booking_requests = relationship("GuestBookingRequest", back_populates="resort", cascade="all, delete-orphan")
+    # Phase 1 relationships
+    resort_events = relationship("ResortEvent", back_populates="resort", cascade="all, delete-orphan")
+    resort_locations = relationship("ResortLocation", back_populates="resort", cascade="all, delete-orphan")
 
 
 class Department(Base):
@@ -223,6 +238,7 @@ class GuestRequest(Base):
     description = Column(Text, nullable=False)
     priority = Column(String(50), default="MEDIUM")  # LOW, MEDIUM, HIGH, CRITICAL
     status = Column(String(50), default="PENDING")  # PENDING, IN_PROGRESS, COMPLETED, CANCELLED
+    is_training_sample = Column(Boolean, default=False, nullable=False)
 
     # Source tracking
     source = Column(String(50), default="GUEST_PORTAL")  # GUEST_PORTAL, VERBAL_STAFF, FRONT_DESK, PHONE, EMAIL
@@ -256,3 +272,113 @@ class ActivityLog(Base):
 
     resort = relationship("Resort", back_populates="activity_logs")
     user = relationship("User", back_populates="activity_logs")
+
+
+class GuestProfile(Base):
+    __tablename__ = "guest_profiles"
+    __table_args__ = (UniqueConstraint("resort_id", "guest_key", name="uq_guest_profile_resort_key"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    resort_id = Column(Integer, ForeignKey("resorts.id"), nullable=False, index=True)
+    guest_key = Column(String(64), nullable=False, index=True)
+    total_stays = Column(Integer, default=0, nullable=False)
+    total_nights = Column(Integer, default=0, nullable=False)
+    average_party_size = Column(Float, default=1.0, nullable=False)
+    preferred_categories = Column(JSON, default=list, nullable=False)
+    preferred_tags = Column(JSON, default=list, nullable=False)
+    segment = Column(String(50), default="New Guest", nullable=False)
+    is_training_sample = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    resort = relationship("Resort", back_populates="guest_profiles")
+    interactions = relationship("GuestActivityInteraction", back_populates="guest_profile", cascade="all, delete-orphan")
+    feedback = relationship("GuestFeedback", back_populates="guest_profile", cascade="all, delete-orphan")
+
+
+class ResortActivity(Base):
+    __tablename__ = "resort_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    resort_id = Column(Integer, ForeignKey("resorts.id"), nullable=False, index=True)
+    name = Column(String(160), nullable=False)
+    description = Column(Text, nullable=False)
+    category = Column(String(80), nullable=False, index=True)
+    tags = Column(JSON, default=list, nullable=False)
+    capacity = Column(Integer, nullable=False)
+    available_slots = Column(Integer, nullable=False)
+    start_at = Column(DateTime, nullable=True)
+    end_at = Column(DateTime, nullable=True)
+    crowd_level = Column(String(20), default="MODERATE", nullable=False)
+    active = Column(Boolean, default=True, nullable=False)
+    is_training_sample = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    resort = relationship("Resort", back_populates="resort_activities")
+    interactions = relationship("GuestActivityInteraction", back_populates="activity", cascade="all, delete-orphan")
+
+
+class GuestActivityInteraction(Base):
+    __tablename__ = "guest_activity_interactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    resort_id = Column(Integer, ForeignKey("resorts.id"), nullable=False, index=True)
+    guest_profile_id = Column(Integer, ForeignKey("guest_profiles.id"), nullable=False, index=True)
+    activity_id = Column(Integer, ForeignKey("resort_activities.id"), nullable=False, index=True)
+    interaction_type = Column(String(20), nullable=False, index=True)
+    rating = Column(Integer, nullable=True)
+    is_training_sample = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    guest_profile = relationship("GuestProfile", back_populates="interactions")
+    activity = relationship("ResortActivity", back_populates="interactions")
+
+
+class GuestFeedback(Base):
+    __tablename__ = "guest_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    resort_id = Column(Integer, ForeignKey("resorts.id"), nullable=False, index=True)
+    guest_profile_id = Column(Integer, ForeignKey("guest_profiles.id"), nullable=False, index=True)
+    activity_id = Column(Integer, ForeignKey("resort_activities.id"), nullable=True, index=True)
+    comment = Column(Text, nullable=False)
+    sentiment = Column(String(20), nullable=False, index=True)
+    topics = Column(JSON, default=list, nullable=False)
+    is_training_sample = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    resort = relationship("Resort", back_populates="guest_feedback")
+    guest_profile = relationship("GuestProfile", back_populates="feedback")
+    activity = relationship("ResortActivity")
+
+
+class GuestAccount(Base):
+    __tablename__ = "guest_accounts"
+    __table_args__ = (UniqueConstraint("booking_id", name="uq_guest_account_booking"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    resort_id = Column(Integer, ForeignKey("resorts.id"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    resort = relationship("Resort", back_populates="guest_accounts")
+    booking = relationship("Booking")
+
+
+class GuestBookingRequest(Base):
+    __tablename__ = "guest_booking_requests"
+    __table_args__ = (UniqueConstraint("booking_id", "guest_request_id", name="uq_guest_booking_request"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    resort_id = Column(Integer, ForeignKey("resorts.id"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False, index=True)
+    guest_request_id = Column(Integer, ForeignKey("guest_requests.id"), nullable=False, index=True)
+    is_training_sample = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    resort = relationship("Resort", back_populates="guest_booking_requests")
+    booking = relationship("Booking")
+    guest_request = relationship("GuestRequest")
+

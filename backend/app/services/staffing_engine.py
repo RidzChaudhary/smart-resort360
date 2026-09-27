@@ -67,7 +67,7 @@ class StaffingEngine:
 
         # Productivity standard: 10 rooms per housekeeper per 8-hour shift
         rooms_per_housekeeper = 10
-        required_housekeepers = int(np.ceil(rooms_to_clean / rooms_per_housekeeper)) if rooms_to_clean > 0 else 1
+        required_housekeepers = int(np.ceil(rooms_to_clean / rooms_per_housekeeper)) if rooms_to_clean > 0 else 0
 
         # Query scheduled/active housekeeping staff
         hk_department = self.db.query(Department).filter(
@@ -87,8 +87,8 @@ class StaffingEngine:
                 )
             ).scalar() or 0
 
-        # Scheduled staff for the shift (simulate 70-80% active staffing baseline if database staff is small)
-        scheduled_staff = max(4, hk_staff_count - 1) if hk_staff_count > 0 else 6
+        # Shift schedules are not modeled yet; use the actual department roster as capacity.
+        scheduled_staff = hk_staff_count
         current_cleaning_capacity = scheduled_staff * rooms_per_housekeeper
 
         staffing_gap = required_housekeepers - scheduled_staff

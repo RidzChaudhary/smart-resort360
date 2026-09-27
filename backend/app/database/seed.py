@@ -1,6 +1,7 @@
 import sys
 import os
 import random
+import argparse
 from datetime import datetime, timedelta
 import bcrypt
 from sqlalchemy.orm import Session
@@ -12,26 +13,42 @@ from app.models import (
     GuestRequest, ActivityLog
 )
 from app.services.forecast_engine import ForecastEngine
+from app.services.guest_training_data import seed_guest_training_data
 from app.services.recommendation_engine import RecommendationEngine
 
 def get_password_hash(password: str) -> str:
+    if os.getenv("APP_ENV", "development").strip().casefold() == "production":
+        variable = "GUEST_DEMO_PASSWORD" if password == "guest123" else "DEMO_ACCOUNT_PASSWORD"
+        password = os.getenv(variable, "")
+        if len(password) < 16:
+            raise RuntimeError(f"{variable} must be configured with at least 16 characters before production seeding")
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
-def seed_database():
-    """Wipes and seeds the database with rich synthetic resort operational data."""
-    print("🔄 Resetting database schema...")
-    Base.metadata.drop_all(bind=engine)
+def seed_database(reset_schema: bool = False):
+    """Seed an empty database, or explicitly reset a development database."""
+    app_env = os.getenv("APP_ENV", "development").strip().casefold()
+    if reset_schema and app_env == "production":
+        raise RuntimeError("Destructive database reset is disabled in production")
+    if reset_schema:
+        print("Resetting development database schema...")
+        Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
     db: Session = SessionLocal()
 
     try:
+        if not reset_schema and db.query(Resort).first():
+            print("Database already contains a resort; safe seed skipped without changing existing data.")
+            return {"skipped": True}
+
         print("🏨 Creating Resort...")
         resort = Resort(
-            name="Azure Haven Luxury Resort & Spa",
-            total_rooms=100,
-            address="742 Ocean Palm Boulevard, Coastal Bay, CA 90210"
+            name="Azure Palm Resort",
+            total_rooms=120,
+            address="Calangute Beach Road, Goa, India 403516",
+            latitude=15.2993,
+            longitude=73.9876
         )
         db.add(resort)
         db.flush()
@@ -42,6 +59,7 @@ def seed_database():
             Department(resort_id=resort.id, name="Front Desk"),
             Department(resort_id=resort.id, name="Food & Beverage"),
             Department(resort_id=resort.id, name="Maintenance"),
+            Department(resort_id=resort.id, name="Inventory"),
         ]
         db.add_all(depts)
         db.flush()
@@ -50,6 +68,7 @@ def seed_database():
         fd_dept = depts[1]
         fb_dept = depts[2]
         maint_dept = depts[3]
+        inventory_dept = depts[4]
 
         print("👥 Creating Users across all 4 roles...")
         users = [
@@ -157,51 +176,107 @@ def seed_database():
                 phone="+1 (555) 012-3456",
                 avatar_url="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150"
             ),
+            User(
+                resort_id=resort.id,
+                department_id=inventory_dept.id,
+                name="Nina Patel",
+                email="inventory.head@resort360.com",
+                password_hash=get_password_hash("password123"),
+                role="DEPARTMENT_HEAD",
+                phone="+1 (555) 012-3457",
+                avatar_url="https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=150"
+            ),
+            User(
+                resort_id=resort.id,
+                department_id=inventory_dept.id,
+                name="Leo Martin",
+                email="staff.leo@resort360.com",
+                password_hash=get_password_hash("password123"),
+                role="STAFF",
+                phone="+1 (555) 012-3458",
+                avatar_url="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150"
+            ),
+            User(
+                resort_id=resort.id,
+                department_id=fb_dept.id,
+                name="Maya Brooks",
+                email="staff.maya@resort360.com",
+                password_hash=get_password_hash("password123"),
+                role="STAFF",
+                phone="+1 (555) 012-3460",
+                avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+            ),
+            User(
+                resort_id=resort.id,
+                department_id=fb_dept.id,
+                name="Rafael Torres",
+                email="staff.rafael@resort360.com",
+                password_hash=get_password_hash("password123"),
+                role="STAFF",
+                phone="+1 (555) 012-3461",
+                avatar_url="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150"
+            ),
+            User(
+                resort_id=resort.id,
+                department_id=inventory_dept.id,
+                name="Grace Kim",
+                email="staff.grace@resort360.com",
+                password_hash=get_password_hash("password123"),
+                role="STAFF",
+                phone="+1 (555) 012-3462",
+                avatar_url="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150"
+            ),
+            User(
+                resort_id=resort.id,
+                department_id=inventory_dept.id,
+                name="Omar Said",
+                email="staff.omar@resort360.com",
+                password_hash=get_password_hash("password123"),
+                role="STAFF",
+                phone="+1 (555) 012-3463",
+                avatar_url="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150"
+            ),
         ]
         db.add_all(users)
         db.flush()
 
-        print("🛏️ Creating 100 Resort Rooms across 4 floors...")
-        room_types = [
-            ("Standard Deluxe King", 2, 0.40),
-            ("Ocean View Double Queen", 4, 0.35),
-            ("Executive Garden Suite", 3, 0.15),
-            ("Presidential Beachfront Villa", 6, 0.10),
-        ]
-
+        print("🛏️ Creating 120 Resort Rooms across 4 floors (70 Standard, 30 Deluxe, 15 Suite, 5 Villa)...")
         rooms = []
         statuses = ["clean", "clean", "dirty", "occupied", "occupied", "occupied", "inspecting"]
 
-        for floor in range(1, 5):
-            for r in range(1, 26):
-                room_num = f"{floor}{r:02d}"
-                rand_val = random.random()
-                cumulative = 0
-                selected_type = room_types[0]
-                for rtype, max_g, prob in room_types:
-                    cumulative += prob
-                    if rand_val <= cumulative:
-                        selected_type = (rtype, max_g, prob)
-                        break
+        # Exact room distribution as specified:
+        # Standard: 70 rooms (Room 101-125, 201-225, 301-320)
+        # Deluxe: 30 rooms (Room 321-325, 401-425)
+        # Suite: 15 rooms (Room 501-515)
+        # Villa: 5 rooms (Villa 601-605)
+        
+        room_specs = []
+        for r in range(101, 126): room_specs.append((r, "Standard", 1, 2))
+        for r in range(201, 226): room_specs.append((r, "Standard", 2, 2))
+        for r in range(301, 321): room_specs.append((r, "Standard", 3, 2))
+        for r in range(321, 326): room_specs.append((r, "Deluxe", 3, 3))
+        for r in range(401, 426): room_specs.append((r, "Deluxe", 4, 3))
+        for r in range(501, 516): room_specs.append((r, "Suite", 5, 4))
+        for r in range(601, 606): room_specs.append((r, "Villa", 6, 6))
 
-                # For demo realism: floor 1 and 2 has dirty & inspecting rooms ready for cleaning
-                status = random.choice(statuses)
-                if r <= 6:
-                    status = "dirty"
-                elif r == 7 or r == 8:
-                    status = "inspecting"
-                elif r == 9:
-                    status = "maintenance"
+        for idx, (r_num, r_type, fl, max_g) in enumerate(room_specs):
+            status = random.choice(statuses)
+            if idx % 10 in (0, 1):
+                status = "dirty"
+            elif idx % 10 == 2:
+                status = "inspecting"
+            elif idx % 20 == 5:
+                status = "maintenance"
 
-                room = Room(
-                    resort_id=resort.id,
-                    room_number=room_num,
-                    room_type=selected_type[0],
-                    status=status,
-                    floor=floor,
-                    max_guests=selected_type[1]
-                )
-                rooms.append(room)
+            room = Room(
+                resort_id=resort.id,
+                room_number=str(r_num),
+                room_type=r_type,
+                status=status,
+                floor=fl,
+                max_guests=max_g
+            )
+            rooms.append(room)
 
         db.add_all(rooms)
         db.flush()
@@ -292,13 +367,13 @@ def seed_database():
 
         print("📅 Creating Realistic Synthetic Bookings (~250 bookings)...")
         guest_names = [
-            "Jonathan Vance", "Emily Watson", "Marcus Sterling", "Chloe Dubois",
-            "Liam Gallagher", "Sophia Loren", "Vikram Patel", "Hannah Schmidt",
-            "Daniel O'Connor", "Aaliyah Mansour", "Ethan Hunt", "Olivia Wilde",
-            "Alexander Hamilton", "Isabella Rossellini", "Benjamin Franklin", "Charlotte Brontë",
-            "Lucas Thorne", "Grace Hopper", "Sebastian Bach", "Amelia Earhart",
-            "Noah Bennett", "Harper Lee", "Oliver Twist", "Mia Wallace",
-            "Gabriel Garcia", "Zoe Saldana", "Mateo Silva", "Chloe Bennett"
+            "Rahul Mehta", "Priya Nair", "Arjun Kapoor", "Ananya Shah",
+            "Vikram Malhotra", "Kavita Sharma", "Devendra Patel", "Meera Reddy",
+            "Rohan Joshi", "Sneha Verma", "Siddharth Malhotra", "Neha Gupta",
+            "Aditya Sharma", "Ritu Singhania", "Manish Rao", "Deepa Iyer",
+            "Rajesh Kulkarni", "Sunita Deshmukh", "Alok Verma", "Pooja Hegde",
+            "Tarun Banerjee", "Shweta Agarwal", "Amit Trivedi", "Divya Saxena",
+            "Rohit Sharma", "Priyanka Chopra", "Karan Johar", "Natasha Poonawalla"
         ]
 
         today = datetime.utcnow().replace(hour=14, minute=0, second=0, microsecond=0)
@@ -332,8 +407,8 @@ def seed_database():
                 )
                 bookings.append(booking)
 
-        # 2. TODAY's Active Stays & Check-ins
-        for r_idx in range(65):
+        # 2. TODAY's Active Stays (already checked in from previous days)
+        for r_idx in range(50):
             room = rooms[r_idx]
             check_in_dt = today - timedelta(days=random.randint(1, 3))
             check_out_dt = today + timedelta(days=random.randint(1, 4))
@@ -348,6 +423,47 @@ def seed_database():
                 guests_count=random.randint(1, 4),
                 early_arrival=False,
                 revenue=450.0
+            )
+            bookings.append(booking)
+
+        # TODAY's Check-ins (arriving today) - 15 arrivals
+        for r_idx in range(50, 65):
+            room = rooms[r_idx]
+            check_in_dt = today
+            check_out_dt = today + timedelta(days=random.randint(2, 5))
+            is_early = (r_idx < 53)  # 3 early arrivals
+
+            booking = Booking(
+                resort_id=resort.id,
+                room_id=room.id,
+                guest_name=random.choice(guest_names) + f" (Today Arrival {r_idx-49})",
+                guest_email=f"today_arrival{r_idx-49}@example.com",
+                check_in=check_in_dt,
+                check_out=check_out_dt,
+                status="confirmed",
+                guests_count=random.randint(1, 4),
+                early_arrival=is_early,
+                expected_arrival_time="10:00 AM" if is_early else "03:00 PM",
+                revenue=random.choice([180, 250, 420, 650])
+            )
+            bookings.append(booking)
+
+        # TODAY's Check-outs (departing today) - 12 departures
+        for r_idx in range(65, 77):
+            room = rooms[r_idx]
+            check_in_dt = today - timedelta(days=random.randint(2, 4))
+            check_out_dt = today
+            booking = Booking(
+                resort_id=resort.id,
+                room_id=room.id,
+                guest_name=random.choice(guest_names) + f" (Today Departure {r_idx-64})",
+                guest_email=f"today_departure{r_idx-64}@example.com",
+                check_in=check_in_dt,
+                check_out=check_out_dt,
+                status="checked_in",
+                guests_count=random.randint(1, 3),
+                early_arrival=False,
+                revenue=random.choice([320, 480, 720])
             )
             bookings.append(booking)
 
@@ -501,6 +617,61 @@ def seed_database():
                 due_date=datetime.utcnow() - timedelta(minutes=45),
                 sla_minutes=120
             ),
+            Task(
+                resort_id=resort.id,
+                department_id=fb_dept.id,
+                assigned_to=users[9].id,
+                title="Prepare breakfast service forecast",
+                description="Review tomorrow's guest count and confirm breakfast station staffing.",
+                priority="MEDIUM",
+                status="ASSIGNED",
+                due_date=datetime.utcnow() + timedelta(hours=5),
+                sla_minutes=300,
+            ),
+            Task(
+                resort_id=resort.id,
+                department_id=fb_dept.id,
+                title="Confirm allergy-safe buffet labels",
+                description="Review dietary notes for tomorrow's arrivals and confirm buffet labels with the kitchen team.",
+                priority="HIGH",
+                status="PENDING",
+                due_date=datetime.utcnow() + timedelta(hours=2),
+                sla_minutes=120,
+            ),
+            Task(
+                resort_id=resort.id,
+                department_id=fb_dept.id,
+                assigned_to=users[9].id,
+                title="Review pool bar stock before evening service",
+                description="Check beverage counts against the evening service forecast and flag low items.",
+                priority="MEDIUM",
+                status="IN_PROGRESS",
+                due_date=datetime.utcnow() + timedelta(hours=3),
+                sla_minutes=240,
+            ),
+            Task(
+                resort_id=resort.id,
+                department_id=fb_dept.id,
+                assigned_to=users[9].id,
+                title="Resolve beverage cooler temperature alert",
+                description="Verify product temperature and coordinate the cooler inspection before the next service.",
+                priority="HIGH",
+                status="BLOCKED",
+                due_date=datetime.utcnow() - timedelta(minutes=20),
+                sla_minutes=60,
+                blocker_reason="Temperature remains above target; cooler inspection is pending.",
+            ),
+            Task(
+                resort_id=resort.id,
+                department_id=inventory_dept.id,
+                assigned_to=users[11].id,
+                title="Reconcile low-stock linen inventory",
+                description="Verify linen counts and prepare the replenishment request for housekeeping supplies.",
+                priority="HIGH",
+                status="ASSIGNED",
+                due_date=datetime.utcnow() + timedelta(hours=3),
+                sla_minutes=180,
+            ),
         ]
         db.add_all(tasks)
         db.flush()
@@ -541,6 +712,7 @@ def seed_database():
             ),
         ]
         db.add_all(logs)
+        guest_training_summary = seed_guest_training_data(db, resort.id)
         db.commit()
 
         print("✅ Database seeding complete! Summary:")
@@ -549,11 +721,20 @@ def seed_database():
         print(f"   • Users: {len(users)}")
         print(f"   • Bookings: {len(bookings)}")
         print(f"   • Inventory Items: {len(inventory)}")
-        print("   • Default Credentials:")
-        print("     - Manager: manager@resort360.com / password123")
-        print("     - Front Desk: frontdesk@resort360.com / password123")
-        print("     - Housekeeping Lead: housekeeping.head@resort360.com / password123")
-        print("     - Staff: staff.elena@resort360.com / password123")
+        print(f"   • Guest Intelligence Training Data: {guest_training_summary}")
+        if app_env == "production":
+            print("   • Demo accounts use the configured deployment passwords.")
+        else:
+            print("   • Default Credentials:")
+            print("     - Manager: manager@resort360.com / password123")
+            print("     - Front Desk: frontdesk@resort360.com / password123")
+            print("     - Housekeeping Lead: housekeeping.head@resort360.com / password123")
+            print("     - Maintenance Lead: maintenance.head@resort360.com / password123")
+            print("     - Food & Beverage Lead: fb.head@resort360.com / password123")
+            print("     - Inventory Lead: inventory.head@resort360.com / password123")
+            print("     - Guest Demo: guest.demo@resort360.com / guest123")
+            print("     - Staff: staff.elena@resort360.com / password123")
+        return {"skipped": False, "resort_id": resort.id, "users": len(users), "bookings": len(bookings)}
 
     except Exception as e:
         db.rollback()
@@ -563,4 +744,7 @@ def seed_database():
         db.close()
 
 if __name__ == "__main__":
-    seed_database()
+    parser = argparse.ArgumentParser(description="Initialize or reset Smart Resort 360 synthetic data.")
+    parser.add_argument("--reset", action="store_true", help="Destructively reset a development database.")
+    args = parser.parse_args()
+    seed_database(reset_schema=args.reset)

@@ -200,32 +200,31 @@ class RecommendationEngine:
         elif rec.type == "inventory":
             metrics = rec.metrics_data or {}
             item_id = metrics.get("item_id")
-            quantity = metrics.get("reorder_quantity", 10.0)
+            quantity = float(metrics.get("reorder_quantity", 0))
             item_name = metrics.get("item_name", "Inventory Item")
-            unit = metrics.get("unit", "units")
-            department_id = self._get_inventory_department_id(
-                item_name=item_name,
-                category=metrics.get("category", "")
-            )
-            if not department_id:
-                raise ValueError(f"No department found for inventory item '{item_name}'")
+            if quantity <= 0 or not item_id:
+                raise ValueError(f"Inventory recommendation for '{item_name}' has no valid reorder quantity or item")
+            item = self.db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.resort_id == self.resort_id,
+            ).first()
+            if not item:
+                raise ValueError(f"Inventory item for '{item_name}' was not found")
 
-            task = Task(
+            purchase_order = PurchaseOrder(
                 resort_id=self.resort_id,
                 recommendation_id=rec.id,
-                department_id=department_id,
-                title=f"Replenish {item_name}",
-                description=(
-                    f"Purchase or add {quantity} {unit} of {item_name}. "
-                    f"Created from approved AI forecast recommendation."
-                ),
-                priority=rec.priority,
+                inventory_item_id=item.id,
+                item_name=item.name,
+                quantity=quantity,
+                unit=item.unit,
+                estimated_cost=round(quantity * item.unit_cost, 2),
+                supplier="Standard Supplier",
                 status="PENDING",
-                due_date=datetime.utcnow() + timedelta(days=1),
-                sla_minutes=1440
+                approved_by=user_name,
             )
-            self.db.add(task)
-            created_tasks.append(task)
+            self.db.add(purchase_order)
+            created_pos.append(purchase_order)
 
         # Create Activity Log entry
         log_entry = ActivityLog(
@@ -243,7 +242,6 @@ class RecommendationEngine:
                 "priority": rec.priority,
                 "created_tasks_count": len(created_tasks),
                 "created_pos_count": len(created_pos),
-                "created_tasks_count": len(created_tasks),
                 "approved_at": rec.approved_at.isoformat()
             }
         )
@@ -374,27 +372,29 @@ class RecommendationEngine:
             rec.title = f"Reorder {metrics.get('item_name')} ({modified_quantity} {metrics.get('unit')}) [Manager Adjusted]"
             rec.recommended_action = f"Order {modified_quantity} {metrics.get('unit')} of {metrics.get('item_name')}."
             item_name = metrics.get("item_name", "Item")
-            department_id = self._get_inventory_department_id(
-                item_name=item_name,
-                category=metrics.get("category", "")
-            )
-            if not department_id:
-                raise ValueError(f"No department found for inventory item '{item_name}'")
+            item_id = metrics.get("item_id")
+            item = self.db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.resort_id == self.resort_id,
+            ).first() if item_id else None
+            if not item:
+                raise ValueError(f"Inventory item for '{item_name}' was not found")
+            if modified_quantity <= 0:
+                raise ValueError("Modified reorder quantity must be greater than zero")
 
-            self.db.add(Task(
+            purchase_order = PurchaseOrder(
                 resort_id=self.resort_id,
                 recommendation_id=rec.id,
-                department_id=department_id,
-                title=f"Replenish {item_name}",
-                description=(
-                    f"Purchase or add {modified_quantity} {metrics.get('unit', 'units')} of {item_name}. "
-                    f"Created from manager-adjusted AI forecast recommendation."
-                ),
-                priority=rec.priority,
+                inventory_item_id=item.id,
+                item_name=item.name,
+                quantity=float(modified_quantity),
+                unit=item.unit,
+                estimated_cost=round(float(modified_quantity) * item.unit_cost, 2),
+                supplier="Standard Supplier",
                 status="PENDING",
-                due_date=datetime.utcnow() + timedelta(days=1),
-                sla_minutes=1440
-            ))
+                approved_by=user_name,
+            )
+            self.db.add(purchase_order)
 
         log_entry = ActivityLog(
             resort_id=self.resort_id,
@@ -418,5 +418,6 @@ class RecommendationEngine:
             "success": True,
             "recommendation_id": rec.id,
             "status": rec.status,
+            "purchase_orders_created": 1 if rec.type == "inventory" else 0,
             "message": f"Recommendation successfully modified and approved."
         }

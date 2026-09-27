@@ -6,7 +6,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
-from app.models import Booking, Room
+from app.models import Booking, Department, Room, User
 
 class ForecastEngine:
     """
@@ -19,6 +19,8 @@ class ForecastEngine:
         self.resort_id = resort_id
         self.model = LinearRegression()
         self.scaler = StandardScaler()
+        self.model_trained = False
+        self.model_r2_score = None
 
     def get_room_capacity(self) -> Dict[str, int]:
         """Return physical and currently sellable room capacity."""
@@ -85,6 +87,8 @@ class ForecastEngine:
         Target: occupancy_pct
         """
         if len(historical_df) < 14:
+            self.model_trained = False
+            self.model_r2_score = None
             # Not enough data for reliable training
             return {
                 "model_trained": False,
@@ -100,6 +104,8 @@ class ForecastEngine:
         df_train = historical_df.dropna()
 
         if len(df_train) < 10:
+            self.model_trained = False
+            self.model_r2_score = None
             return {
                 "model_trained": False,
                 "reason": "insufficient_data_after_lagging",
@@ -119,6 +125,8 @@ class ForecastEngine:
 
         # Calculate training score (R²)
         train_score = self.model.score(X_scaled, y)
+        self.model_trained = True
+        self.model_r2_score = float(train_score)
 
         return {
             "model_trained": True,
@@ -140,7 +148,7 @@ class ForecastEngine:
         month = target_date.month
 
         # Use recent occupancy if available, otherwise use average
-        lagged_1d = recent_occupancy if recent_occupancy is not None else 65.0
+        lagged_1d = recent_occupancy if recent_occupancy is not None else 0.0
         lagged_7d = lagged_1d  # Simplified for MVP
 
         # Create feature vector
@@ -153,14 +161,13 @@ class ForecastEngine:
             # Clamp prediction between 0-100
             prediction = max(0.0, min(100.0, prediction))
 
-            # Confidence based on whether model was trained
-            confidence = 0.75  # Reasonable confidence for trained model
+            confidence = max(0.0, min(1.0, self.model_r2_score or 0.0))
 
             return prediction, confidence
 
         except Exception:
-            # Model not trained, return baseline
-            return 65.0, 0.5
+            # If the model cannot be used, carry forward observed occupancy only.
+            return max(0.0, min(100.0, recent_occupancy or 0.0)), 0.0
 
     def get_confirmed_occupancy(self, target_date: datetime) -> Dict[str, int]:
         """
@@ -240,10 +247,31 @@ class ForecastEngine:
         historical_df = self.get_historical_occupancy_data(days_back=90)
         model_metadata = self.train_model(historical_df)
 
-        # Get recent occupancy for lagged features
-        recent_occupancy = 65.0
+        # Use the recent observed mean as the baseline if there is insufficient history to train.
+        recent_occupancy = 0.0
         if len(historical_df) > 0:
-            recent_occupancy = historical_df['occupancy_pct'].iloc[-1]
+            recent_occupancy = float(historical_df['occupancy_pct'].tail(7).mean())
+
+        historical_bookings = self.db.query(Booking).filter(
+            Booking.resort_id == self.resort_id,
+            Booking.revenue > 0,
+            Booking.status.in_(["confirmed", "checked_in", "checked_out"]),
+        ).all()
+        room_night_rates = [
+            booking.revenue / max((booking.check_out.date() - booking.check_in.date()).days, 1)
+            for booking in historical_bookings
+        ]
+        historical_rate = float(np.mean(room_night_rates)) if room_night_rates else 0.0
+
+        housekeeping_department = self.db.query(Department).filter(
+            Department.resort_id == self.resort_id,
+            Department.name.ilike("%housekeeping%"),
+        ).first()
+        housekeepers_on_roster = self.db.query(func.count(User.id)).filter(
+            User.resort_id == self.resort_id,
+            User.department_id == housekeeping_department.id if housekeeping_department else None,
+            User.role == "STAFF",
+        ).scalar() if housekeeping_department else 0
 
         forecast_days = []
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -280,12 +308,20 @@ class ForecastEngine:
             rooms_per_housekeeper = 10
             housekeepers_needed = int(np.ceil(cleaning_workload / rooms_per_housekeeper))
 
-            # For demo: simulate scheduled staff (80% of needed, creating gaps)
-            housekeepers_scheduled = max(0, housekeepers_needed - (1 if cleaning_workload > 50 else 0))
-            staffing_gap = housekeepers_needed - housekeepers_scheduled
+            housekeepers_scheduled = housekeepers_on_roster or 0
+            staffing_gap = max(0, housekeepers_needed - housekeepers_scheduled)
 
-            # Revenue estimation (avg $150 per room per night)
-            expected_revenue = confirmed_data["occupied_rooms"] * 150
+            active_bookings = self.db.query(Booking).filter(
+                Booking.resort_id == self.resort_id,
+                Booking.check_in <= target_date,
+                Booking.check_out > target_date,
+                Booking.status.in_(["confirmed", "checked_in"]),
+            ).all()
+            confirmed_revenue = sum(
+                booking.revenue / max((booking.check_out.date() - booking.check_in.date()).days, 1)
+                for booking in active_bookings
+            )
+            expected_revenue = confirmed_revenue if confirmed_revenue > 0 else actual_occupied * historical_rate
 
             forecast_days.append({
                 "date": target_date.strftime("%Y-%m-%d"),

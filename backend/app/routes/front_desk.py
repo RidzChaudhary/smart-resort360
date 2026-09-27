@@ -6,24 +6,31 @@ from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.models import ActivityLog, Booking, Department, Room, Task, User
 from app.schemas import RoomResponse, RoomStatusUpdateRequest
-from app.services.room_lifecycle import ROOM_STATUSES, transition_room_status
+from app.services.room_lifecycle import ROOM_STATUSES, ROOM_TRANSITIONS, transition_room_status
 from app.utils.auth import require_role
 
 router = APIRouter(prefix="/api", tags=["Front Desk & Rooms"])
 
 @router.get("/rooms", response_model=list[RoomResponse])
 def get_rooms(
-    current_user: User = Depends(require_role(["MANAGER", "FRONT_DESK", "DEPARTMENT_HEAD"])),
+    current_user: User = Depends(require_role(["FRONT_DESK"])),
     db: Session = Depends(get_db),
 ):
     return db.query(Room).filter(Room.resort_id == current_user.resort_id).order_by(Room.room_number).all()
+
+
+@router.get("/rooms/status-transitions")
+def get_room_status_transitions(
+    current_user: User = Depends(require_role(["FRONT_DESK"])),
+):
+    return {status: sorted(next_statuses) for status, next_statuses in ROOM_TRANSITIONS.items()}
 
 
 @router.patch("/rooms/{room_id}/status", response_model=RoomResponse)
 def update_room_status(
     room_id: int,
     request: RoomStatusUpdateRequest,
-    current_user: User = Depends(require_role(["MANAGER", "FRONT_DESK", "DEPARTMENT_HEAD"])),
+    current_user: User = Depends(require_role(["FRONT_DESK"])),
     db: Session = Depends(get_db),
 ):
     room = db.query(Room).filter(
@@ -54,7 +61,7 @@ def update_room_status(
 @router.post("/front-desk/bookings/{booking_id}/check-in")
 def check_in_booking(
     booking_id: int,
-    current_user: User = Depends(require_role(["MANAGER", "FRONT_DESK"])),
+    current_user: User = Depends(require_role(["FRONT_DESK"])),
     db: Session = Depends(get_db),
 ):
     booking = db.query(Booking).filter(
@@ -91,7 +98,7 @@ def check_in_booking(
 @router.post("/front-desk/bookings/{booking_id}/check-out")
 def check_out_booking(
     booking_id: int,
-    current_user: User = Depends(require_role(["MANAGER", "FRONT_DESK"])),
+    current_user: User = Depends(require_role(["FRONT_DESK"])),
     db: Session = Depends(get_db),
 ):
     booking = db.query(Booking).filter(

@@ -8,7 +8,7 @@ from app.database.connection import get_db
 from app.models import GuestRequest, Room, Task, Department, ActivityLog, User
 from app.schemas import GuestRequestCreate, GuestRequestResponse, InternalGuestRequestCreate
 from app.services.room_lifecycle import transition_room_status
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_department_head_department_id
 
 router = APIRouter(prefix="/api/guest-requests", tags=["Guest Requests"])
 
@@ -116,7 +116,7 @@ def create_internal_guest_request(
     db: Session = Depends(get_db)
 ):
     """Create a request reported by front desk or staff using the same request/task model."""
-    if current_user.role not in {"MANAGER", "FRONT_DESK", "DEPARTMENT_HEAD", "STAFF"}:
+    if current_user.role not in {"MANAGER", "FRONT_DESK", "STAFF"}:
         raise HTTPException(status_code=403, detail="Role cannot create internal guest requests")
     if request_in.source.upper() not in {"VERBAL_STAFF", "FRONT_DESK", "PHONE", "EMAIL"}:
         raise HTTPException(status_code=400, detail="Invalid internal request source")
@@ -208,7 +208,16 @@ def get_all_guest_requests(
     """
     resort_id = current_user.resort_id
 
-    query = db.query(GuestRequest).filter(GuestRequest.resort_id == resort_id)
+    query = db.query(GuestRequest).filter(
+        GuestRequest.resort_id == resort_id,
+        GuestRequest.is_training_sample.is_(False),
+    )
+    if current_user.role == "DEPARTMENT_HEAD":
+        department_id = get_department_head_department_id(current_user)
+        query = query.join(Task, GuestRequest.task_id == Task.id).filter(
+            Task.department_id == department_id,
+            Task.resort_id == resort_id,
+        )
     if status:
         query = query.filter(GuestRequest.status == status.upper())
 
@@ -234,6 +243,12 @@ def update_guest_request_status(
 
     if not req:
         raise HTTPException(status_code=404, detail="Guest request not found")
+
+    if current_user.role == "DEPARTMENT_HEAD":
+        department_id = get_department_head_department_id(current_user)
+        if not req.task or req.task.department_id != department_id:
+            raise HTTPException(status_code=403, detail="You can only update requests linked to your department")
+        raise HTTPException(status_code=403, detail="Update the task from your department task dashboard")
 
     requested_status = status or (status_payload or {}).get("status")
     if not requested_status:

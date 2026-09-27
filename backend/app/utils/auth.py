@@ -9,11 +9,24 @@ from app.database.connection import get_db
 from app.models import User
 import os
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+APP_ENV = os.getenv("APP_ENV", "development").strip().casefold()
+SECRET_KEY = os.getenv("SECRET_KEY")
+if APP_ENV == "production":
+    if not SECRET_KEY or len(SECRET_KEY) < 32:
+        raise RuntimeError("A SECRET_KEY of at least 32 characters must be configured in production")
+elif not SECRET_KEY:
+    SECRET_KEY = "local-development-only-secret-key-do-not-deploy"
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours for demo
 
 security = HTTPBearer()
+
+DEPARTMENT_HEAD_DEPARTMENTS = frozenset({
+    "housekeeping",
+    "maintenance",
+    "food & beverage",
+    "inventory",
+})
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify plain password against hashed password using bcrypt"""
@@ -84,3 +97,23 @@ def require_role(allowed_roles: list):
             )
         return current_user
     return role_checker
+
+def get_department_head_department_id(current_user: User) -> int:
+    """Return the validated department scope for an operational department head."""
+    department = current_user.department
+    if (
+        current_user.role != "DEPARTMENT_HEAD"
+        or department is None
+        or department.id != current_user.department_id
+        or department.resort_id != current_user.resort_id
+        or department.name.strip().casefold() not in DEPARTMENT_HEAD_DEPARTMENTS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Department Head access is limited to Housekeeping, Maintenance, Food & Beverage, and Inventory",
+        )
+    return department.id
+
+def require_department_head(current_user: User = Depends(get_current_user)) -> User:
+    get_department_head_department_id(current_user)
+    return current_user

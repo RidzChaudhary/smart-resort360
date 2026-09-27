@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from app.database.connection import get_db
 from app.models import User, Task, Department, ActivityLog
 from app.schemas import TaskResponse, TaskCreate, TaskAssignRequest, TaskStatusRequest, TaskEscalateRequest
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_department_head_department_id
 TASK_STATUSES = {"PENDING", "ASSIGNED", "IN_PROGRESS", "BLOCKED", "ESCALATED", "COMPLETED", "CANCELLED"}
 TASK_TRANSITIONS = {
     "PENDING": {"ASSIGNED", "CANCELLED"},
@@ -50,9 +50,8 @@ def scoped_task_query(query, current_user: User):
     if current_user.role == "STAFF":
         return query.filter(Task.assigned_to == current_user.id)
     if current_user.role == "DEPARTMENT_HEAD":
-        if not current_user.department_id:
-            raise HTTPException(status_code=403, detail="User is not assigned to a department")
-        return query.filter(Task.department_id == current_user.department_id)
+        department_id = get_department_head_department_id(current_user)
+        return query.filter(Task.department_id == department_id)
     if current_user.role == "FRONT_DESK":
         return query.join(Department).filter(Department.name.ilike("%front desk%"))
     raise HTTPException(status_code=403, detail="Role cannot access operational tasks")
@@ -60,7 +59,10 @@ def scoped_task_query(query, current_user: User):
 def can_manage_task(task: Task, current_user: User):
     if current_user.role == "MANAGER":
         return True
-    return current_user.role == "DEPARTMENT_HEAD" and current_user.department_id == task.department_id
+    return (
+        current_user.role == "DEPARTMENT_HEAD"
+        and get_department_head_department_id(current_user) == task.department_id
+    )
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -107,10 +109,24 @@ def create_task(
     Manually create a new operational task.
     """
     resort_id = current_user.resort_id
-    if current_user.role not in {"MANAGER", "DEPARTMENT_HEAD"}:
-        raise HTTPException(status_code=403, detail="Only managers and department heads can create tasks")
-    if current_user.role == "DEPARTMENT_HEAD" and task_in.department_id != current_user.department_id:
-        raise HTTPException(status_code=403, detail="You can only create tasks in your department")
+    if current_user.role != "MANAGER":
+        raise HTTPException(status_code=403, detail="Only managers can create tasks")
+
+    department = db.query(Department).filter(
+        Department.id == task_in.department_id,
+        Department.resort_id == resort_id,
+    ).first()
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    assigned_staff = None
+    if task_in.assigned_to:
+        assigned_staff = db.query(User).filter(
+            User.id == task_in.assigned_to,
+            User.resort_id == resort_id,
+        ).first()
+        if not assigned_staff or assigned_staff.role != "STAFF" or assigned_staff.department_id != department.id:
+            raise HTTPException(status_code=400, detail="Task must be assigned to staff in its department")
 
     # Calculate SLA if not provided
     sla_minutes = task_in.sla_minutes
@@ -241,7 +257,7 @@ def update_task_status(
 
     if current_user.role == "STAFF" and task.assigned_to != current_user.id:
         raise HTTPException(status_code=403, detail="You can only update your assigned tasks")
-    if current_user.role == "DEPARTMENT_HEAD" and task.department_id != current_user.department_id:
+    if current_user.role == "DEPARTMENT_HEAD" and task.department_id != get_department_head_department_id(current_user):
         raise HTTPException(status_code=403, detail="You can only update tasks in your department")
     if current_user.role not in {"MANAGER", "STAFF", "DEPARTMENT_HEAD"}:
         raise HTTPException(status_code=403, detail="Role cannot update operational tasks")
@@ -301,7 +317,7 @@ def escalate_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if current_user.role == "STAFF" and task.assigned_to != current_user.id:
         raise HTTPException(status_code=403, detail="You can only escalate your assigned tasks")
-    if current_user.role == "DEPARTMENT_HEAD" and task.department_id != current_user.department_id:
+    if current_user.role == "DEPARTMENT_HEAD" and task.department_id != get_department_head_department_id(current_user):
         raise HTTPException(status_code=403, detail="You can only escalate tasks in your department")
     if current_user.role not in {"MANAGER", "STAFF", "DEPARTMENT_HEAD"}:
         raise HTTPException(status_code=403, detail="Role cannot escalate tasks")
@@ -309,7 +325,23 @@ def escalate_task(
         raise HTTPException(status_code=400, detail="Only blocked or active tasks can be escalated")
 
     target = None
-    if request.escalate_to_user_id:
+    if current_user.role == "DEPARTMENT_HEAD":
+        if request.escalate_to_user_id:
+            target = db.query(User).filter(
+                User.id == request.escalate_to_user_id,
+                User.resort_id == current_user.resort_id,
+                User.role == "MANAGER",
+            ).first()
+            if not target:
+                raise HTTPException(status_code=400, detail="Department Heads can only escalate to a manager")
+        else:
+            target = db.query(User).filter(
+                User.resort_id == current_user.resort_id,
+                User.role == "MANAGER",
+            ).first()
+            if not target:
+                raise HTTPException(status_code=409, detail="No manager is available to receive this escalation")
+    elif request.escalate_to_user_id:
         target = db.query(User).filter(
             and_(User.id == request.escalate_to_user_id, User.resort_id == current_user.resort_id)
         ).first()

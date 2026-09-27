@@ -249,3 +249,71 @@ class RoomResponse(BaseModel):
 
 class RoomStatusUpdateRequest(BaseModel):
     status: str  # clean, dirty, inspecting, maintenance, occupied
+
+
+# --- Guest Intelligence Schemas ---
+class GuestSessionRequest(BaseModel):
+    room_number: str = Field(min_length=1, max_length=50)
+    guest_name: str = Field(min_length=2, max_length=255)
+
+
+class GuestLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
+
+
+class GuestServiceRequestCreate(BaseModel):
+    request_type: str = Field(min_length=2, max_length=100)
+    description: str = Field(min_length=5, max_length=2000)
+    priority: str = "MEDIUM"
+
+
+class ResortActivityCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    description: str = Field(min_length=5, max_length=2000)
+    category: str = Field(min_length=2, max_length=80)
+    tags: List[str] = Field(default_factory=list, max_length=20)
+    capacity: int = Field(gt=0, le=10000)
+    available_slots: Optional[int] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    crowd_level: str = "MODERATE"
+
+
+class ResortActivityUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=160)
+    description: Optional[str] = Field(default=None, min_length=5, max_length=2000)
+    category: Optional[str] = Field(default=None, min_length=2, max_length=80)
+    tags: Optional[List[str]] = Field(default=None, max_length=20)
+    capacity: Optional[int] = Field(default=None, gt=0, le=10000)
+    available_slots: Optional[int] = Field(default=None, ge=0, le=10000)
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    crowd_level: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class GuestActivityInteractionCreate(BaseModel):
+    activity_id: int
+    interaction_type: str
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+
+
+class GuestFeedbackCreate(BaseModel):
+    comment: str = Field(min_length=5, max_length=2000)
+    activity_id: Optional[int] = None
+
+
+class GuestProfileResponse(BaseModel):
+    total_stays: int
+    total_nights: int
+    average_party_size: float
+    preferred_categories: List[str]
+    preferred_tags: List[str]
+    segment: str
+
+
+class GuestRecommendationResponse(BaseModel):
+    activity: Dict[str, Any]
+    score: float
+    reasons: List[str]

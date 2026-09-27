@@ -22,6 +22,9 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     - manager@resort360.com / password123 (MANAGER)
     - frontdesk@resort360.com / password123 (FRONT_DESK)
     - housekeeping.head@resort360.com / password123 (DEPARTMENT_HEAD)
+    - maintenance.head@resort360.com / password123 (DEPARTMENT_HEAD)
+    - fb.head@resort360.com / password123 (DEPARTMENT_HEAD)
+    - inventory.head@resort360.com / password123 (DEPARTMENT_HEAD)
     - staff.elena@resort360.com / password123 (STAFF)
     """
     # Find user by email

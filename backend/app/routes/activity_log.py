@@ -6,7 +6,7 @@ from typing import List
 from app.database.connection import get_db
 from app.models import ActivityLog, User
 from app.schemas import ActivityLogResponse
-from app.utils.auth import get_current_user
+from app.utils.auth import require_role
 
 router = APIRouter(prefix="/api/activity-log", tags=["Activity Log"])
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/activity-log", tags=["Activity Log"])
 def get_activity_logs(
     limit: int = 100,
     action_type: str = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["MANAGER"])),
     db: Session = Depends(get_db)
 ):
     """

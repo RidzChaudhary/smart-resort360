@@ -6,7 +6,7 @@ from typing import Dict, Any
 from app.database.connection import get_db
 from app.models import User, Recommendation, Task, Room, Booking, ActivityLog, Department, GuestRequest, InventoryItem
 from app.services.forecast_engine import ForecastEngine
-from app.utils.auth import get_current_user, require_role
+from app.utils.auth import get_current_user, require_role, require_department_head, get_department_head_department_id
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboards"])
@@ -79,7 +79,11 @@ def get_manager_dashboard(
         and_(Task.resort_id == resort_id, Task.status.notin_(["COMPLETED", "CANCELLED"]))
     ).all()
     open_guest_issues = db.query(GuestRequest).filter(
-        and_(GuestRequest.resort_id == resort_id, GuestRequest.status.in_(["PENDING", "IN_PROGRESS"]))
+        and_(
+            GuestRequest.resort_id == resort_id,
+            GuestRequest.status.in_(["PENDING", "IN_PROGRESS"]),
+            GuestRequest.is_training_sample.is_(False),
+        )
     ).count()
     inventory_risks = db.query(InventoryItem).filter(
         and_(InventoryItem.resort_id == resort_id, InventoryItem.current_stock <= InventoryItem.reorder_threshold)
@@ -115,6 +119,7 @@ def get_manager_dashboard(
             for issue in db.query(GuestRequest).filter(
                 GuestRequest.resort_id == resort_id,
                 GuestRequest.status.in_(["PENDING", "IN_PROGRESS"]),
+                GuestRequest.is_training_sample.is_(False),
             ).order_by(GuestRequest.created_at.desc()).limit(20).all()
         ],
         "inventory_risks": [
@@ -201,7 +206,7 @@ def get_manager_dashboard(
 
 @router.get("/front-desk")
 def get_front_desk_dashboard(
-    current_user: User = Depends(require_role(["MANAGER", "FRONT_DESK"])),
+    current_user: User = Depends(require_role(["FRONT_DESK"])),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
@@ -278,20 +283,20 @@ def get_front_desk_dashboard(
 
 @router.get("/department")
 def get_department_dashboard(
-    current_user: User = Depends(require_role(["MANAGER", "DEPARTMENT_HEAD"])),
+    current_user: User = Depends(require_department_head),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
     Department Head dashboard with assigned tasks and team workload.
     """
     resort_id = current_user.resort_id
-    department_id = current_user.department_id
-
-    if not department_id:
-        raise HTTPException(status_code=400, detail="User is not assigned to a department")
+    department_id = get_department_head_department_id(current_user)
 
     # Get department info
-    department = db.query(Department).filter(Department.id == department_id).first()
+    department = db.query(Department).filter(
+        Department.id == department_id,
+        Department.resort_id == resort_id,
+    ).first()
 
     # Department tasks
     tasks = db.query(Task).filter(
@@ -337,7 +342,8 @@ def get_department_dashboard(
                 "description": t.description,
                 "priority": t.priority,
                 "status": t.status,
-                "assigned_to": t.assignee.name if t.assignee else "Unassigned",
+                "assigned_to": t.assigned_to,
+                "assignee_name": t.assignee.name if t.assignee else "Unassigned",
                 "assignee_id": t.assigned_to,
                 "room_number": t.room_number,
                 "due_date": t.due_date.isoformat() if t.due_date else None,
