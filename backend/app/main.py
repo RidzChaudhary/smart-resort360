@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import os
 
 from app.database.connection import Base, engine
+from app.database.seed import seed_database
 from app.routes import (
     auth,
     dashboard,
@@ -51,11 +52,14 @@ app = FastAPI(
 @app.on_event("startup")
 def create_additive_tables():
     """Create newly introduced tables without altering existing V1/V2 tables."""
+
     # Phase 1: ensure new models are imported so SQLAlchemy registers them
     from app.models.resort_event import ResortEvent     # noqa: F401
     from app.models.location import ResortLocation      # noqa: F401
     from app.models.weather_cache import WeatherCache   # noqa: F401
+
     Base.metadata.create_all(bind=engine)
+
     training_flag_tables = (
         "guest_profiles",
         "resort_activities",
@@ -63,35 +67,84 @@ def create_additive_tables():
         "guest_feedback",
         "guest_requests",
     )
+
     with engine.begin() as connection:
         inspector = inspect(connection)
+
         for table_name in training_flag_tables:
             if table_name in inspector.get_table_names():
-                columns = {column["name"] for column in inspector.get_columns(table_name)}
+                columns = {
+                    column["name"]
+                    for column in inspector.get_columns(table_name)
+                }
+
                 if "is_training_sample" not in columns:
-                    connection.execute(text(
-                        f"ALTER TABLE {table_name} ADD COLUMN is_training_sample BOOLEAN NOT NULL DEFAULT FALSE"
-                    ))
-        
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table_name} "
+                            "ADD COLUMN is_training_sample BOOLEAN NOT NULL DEFAULT FALSE"
+                        )
+                    )
+
         # Check resorts table for latitude and longitude
         if "resorts" in inspector.get_table_names():
-            resort_columns = {column["name"] for column in inspector.get_columns("resorts")}
+            resort_columns = {
+                column["name"]
+                for column in inspector.get_columns("resorts")
+            }
+
             if "latitude" not in resort_columns:
-                connection.execute(text("ALTER TABLE resorts ADD COLUMN latitude FLOAT DEFAULT 15.2993"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE resorts "
+                        "ADD COLUMN latitude FLOAT DEFAULT 15.2993"
+                    )
+                )
+
             if "longitude" not in resort_columns:
-                connection.execute(text("ALTER TABLE resorts ADD COLUMN longitude FLOAT DEFAULT 73.9876"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE resorts "
+                        "ADD COLUMN longitude FLOAT DEFAULT 73.9876"
+                    )
+                )
 
         # Check resort_locations table columns
         if "resort_locations" in inspector.get_table_names():
-            loc_columns = {column["name"] for column in inspector.get_columns("resort_locations")}
+            loc_columns = {
+                column["name"]
+                for column in inspector.get_columns("resort_locations")
+            }
+
             if "indoor" not in loc_columns:
-                connection.execute(text("ALTER TABLE resort_locations ADD COLUMN indoor BOOLEAN DEFAULT FALSE"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE resort_locations "
+                        "ADD COLUMN indoor BOOLEAN DEFAULT FALSE"
+                    )
+                )
+
             if "is_demo_coordinates" not in loc_columns:
-                connection.execute(text("ALTER TABLE resort_locations ADD COLUMN is_demo_coordinates BOOLEAN DEFAULT TRUE"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE resort_locations "
+                        "ADD COLUMN is_demo_coordinates BOOLEAN DEFAULT TRUE"
+                    )
+                )
+
             if "active" not in loc_columns:
-                connection.execute(text("ALTER TABLE resort_locations ADD COLUMN active BOOLEAN DEFAULT TRUE"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE resort_locations "
+                        "ADD COLUMN active BOOLEAN DEFAULT TRUE"
+                    )
+                )
 
-
+    # Seed demo data when the production database is empty
+    try:
+        seed_database()
+    except Exception as e:
+        print(f"Startup database seed failed: {e}")
 
 # CORS middleware - Allow frontend to connect
 app.add_middleware(
