@@ -43,6 +43,39 @@ export const Inventory = () => {
     }
   };
 
+  const handleApproveReorder = async (item) => {
+    const qty = Math.max(item.reorder_threshold, (item.max_stock || item.reorder_threshold * 2) - item.current_stock);
+    try {
+      await inventoryAPI.createPurchaseOrder({
+        inventory_item_id: item.id,
+        quantity: qty,
+        supplier: 'Primary Vendor'
+      });
+      await fetchData();
+      alert(`✅ Purchase Order approved and issued for ${qty} ${item.unit} of ${item.name}!`);
+    } catch (err) {
+      alert('Failed to approve purchase order: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  const handleApproveAllCritical = async () => {
+    if (!window.confirm(`Approve purchase orders for all ${criticalItems.length} critical inventory items?`)) return;
+    try {
+      await Promise.all(criticalItems.map((item) => {
+        const qty = Math.max(item.reorder_threshold, (item.max_stock || item.reorder_threshold * 2) - item.current_stock);
+        return inventoryAPI.createPurchaseOrder({
+          inventory_item_id: item.id,
+          quantity: qty,
+          supplier: 'Primary Vendor'
+        });
+      }));
+      await fetchData();
+      alert(`🎉 Successfully approved purchase orders for all ${criticalItems.length} critical items!`);
+    } catch (err) {
+      alert('Failed to approve critical purchase orders: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -118,7 +151,7 @@ export const Inventory = () => {
         <div className="space-y-6">
           {/* Critical Risk Banner */}
           {criticalItems.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
                 <div>
@@ -130,58 +163,89 @@ export const Inventory = () => {
                   </p>
                 </div>
               </div>
+              <button
+                onClick={handleApproveAllCritical}
+                className="flex items-center gap-1.5 px-4 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded-lg shadow-sm transition whitespace-nowrap"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Approve All {criticalItems.length} POs
+              </button>
             </div>
           )}
 
           {/* Inventory Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredItems.map((item) => (
+            {filteredItems.map((item) => {
+              const suggestedQty = Math.max(item.reorder_threshold, (item.max_stock || item.reorder_threshold * 2) - item.current_stock);
+              const estCost = suggestedQty * (item.unit_cost || 5);
+              return (
               <div
                 key={item.id}
-                className="surface p-5 rounded-xl border border-ivory-300 shadow-sm relative overflow-hidden"
+                className="surface p-5 rounded-xl border border-ivory-300 shadow-sm relative overflow-hidden flex flex-col justify-between"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <span className="text-[10px] font-mono font-bold text-charcoal-500 uppercase tracking-wider">
-                      {item.category}
+                <div>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <span className="text-[10px] font-mono font-bold text-charcoal-500 uppercase tracking-wider">
+                        {item.category}
+                      </span>
+                      <h3 className="font-bold text-charcoal-900 text-base">{item.name}</h3>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded border ${
+                        item.stockout_risk === 'CRITICAL'
+                          ? 'bg-red-100 text-red-800 border-red-200'
+                          : item.stockout_risk === 'HIGH'
+                          ? 'bg-amber-100 text-amber-900 border-amber-200'
+                          : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      }`}
+                    >
+                      {item.stockout_risk} RISK
                     </span>
-                    <h3 className="font-bold text-charcoal-900 text-base">{item.name}</h3>
                   </div>
-                  <span
-                    className={`px-2 py-0.5 text-[10px] font-bold rounded border ${
-                      item.stockout_risk === 'CRITICAL'
-                        ? 'bg-red-100 text-red-800 border-red-200'
-                        : item.stockout_risk === 'HIGH'
-                        ? 'bg-amber-100 text-amber-900 border-amber-200'
-                        : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                    }`}
-                  >
-                    {item.stockout_risk} RISK
-                  </span>
+
+                  <div className="space-y-2 text-xs text-charcoal-700 mb-2 bg-ivory-50 p-3 rounded-lg border border-ivory-200">
+                    <div className="flex justify-between">
+                      <span className="text-charcoal-500">Current Stock:</span>
+                      <span className="font-bold text-charcoal-900 font-mono">{item.current_stock} {item.unit}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-charcoal-500">Reorder Threshold:</span>
+                      <span className="font-mono text-charcoal-800">{item.reorder_threshold} {item.unit}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-charcoal-500">Projected Runout:</span>
+                      <span className="font-bold text-amber-800 font-mono">
+                        {item.projected_days_left > 30 ? '> 30 days' : `${item.projected_days_left.toFixed(1)} days`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-charcoal-500">Supplier Lead Time:</span>
+                      <span className="font-mono text-charcoal-800">{item.lead_time_days} days</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-2 text-xs text-charcoal-700 mb-2 bg-ivory-50 p-3 rounded-lg border border-ivory-200">
-                  <div className="flex justify-between">
-                    <span className="text-charcoal-500">Current Stock:</span>
-                    <span className="font-bold text-charcoal-900 font-mono">{item.current_stock} {item.unit}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-charcoal-500">Reorder Threshold:</span>
-                    <span className="font-mono text-charcoal-800">{item.reorder_threshold} {item.unit}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-charcoal-500">Projected Runout:</span>
-                    <span className="font-bold text-amber-800 font-mono">
-                      {item.projected_days_left > 30 ? '> 30 days' : `${item.projected_days_left.toFixed(1)} days`}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-charcoal-500">Supplier Lead Time:</span>
-                    <span className="font-mono text-charcoal-800">{item.lead_time_days} days</span>
-                  </div>
+                <div className="mt-3 pt-3 border-t border-ivory-200 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-charcoal-500 font-medium">
+                    Est. PO: <strong className="text-charcoal-900 font-mono">${estCost.toFixed(2)}</strong> ({suggestedQty} {item.unit})
+                  </span>
+                  <button
+                    onClick={() => handleApproveReorder(item)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shadow-sm ${
+                      item.stockout_risk === 'CRITICAL'
+                        ? 'bg-red-700 hover:bg-red-800 text-white'
+                        : item.stockout_risk === 'HIGH'
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                        : 'bg-forest-800 hover:bg-forest-900 text-white'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Approve PO
+                  </button>
                 </div>
               </div>
-            ))}
+            );})}
           </div>
         </div>
       )}
