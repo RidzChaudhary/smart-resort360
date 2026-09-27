@@ -26,11 +26,7 @@ export const WeatherWidget = ({
   const [expanded, setExpanded] = useState(false);
 
   if (!weather) {
-    return (
-      <div className="surface p-5 text-center text-charcoal-600 text-sm" role="status">
-        Current weather is unavailable. Core resort operations remain available.
-      </div>
-    );
+    return null;
   }
 
   const current = weather.current || {};

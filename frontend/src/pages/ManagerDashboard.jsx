@@ -230,14 +230,6 @@ export const ManagerDashboard = () => {
         </div>
       </div>
 
-      {/* PHASE 1: Real-Time Weather & High-Risk Alert Widget */}
-      <WeatherWidget
-        weather={activeWeather}
-        riskAnalysis={riskAnalysis}
-        onOpenSimulation={() => setIsSimulationModalOpen(true)}
-        isSimulation={isSimulationActive}
-        onResetSimulation={handleResetSimulation}
-      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
