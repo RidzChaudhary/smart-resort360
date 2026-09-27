@@ -151,23 +151,23 @@ export const Inventory = () => {
         <div className="space-y-6">
           {/* Critical Risk Banner */}
           {criticalItems.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
               <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                <AlertTriangle className="w-5 h-5 text-amber-700 flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-bold text-red-900">
-                    {criticalItems.length} items at critical risk of stockout within lead time!
+                  <p className="text-sm font-bold text-charcoal-900">
+                    {criticalItems.length} items requiring replenishment within lead time
                   </p>
-                  <p className="text-xs text-red-700">
-                    High occupancy demand requires immediate replenishment.
+                  <p className="text-xs text-charcoal-600 mt-0.5 font-medium">
+                    Occupancy forecast predicts stockout risk if reorders are delayed.
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleApproveAllCritical}
-                className="flex items-center gap-1.5 px-4 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded-lg shadow-sm transition whitespace-nowrap"
+                className="flex items-center gap-1.5 px-4 py-2 bg-forest-900 hover:bg-forest-800 text-white text-xs font-bold rounded-lg shadow-sm transition whitespace-nowrap border border-forest-700"
               >
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-4 h-4 text-brass-400" />
                 Approve All {criticalItems.length} POs
               </button>
             </div>
@@ -181,7 +181,7 @@ export const Inventory = () => {
               return (
               <div
                 key={item.id}
-                className="surface p-5 rounded-xl border border-ivory-300 shadow-sm relative overflow-hidden flex flex-col justify-between"
+                className="surface p-5 rounded-xl border border-ivory-300 shadow-sm relative overflow-hidden flex flex-col justify-between hover:border-sage-300 transition"
               >
                 <div>
                   <div className="flex items-start justify-between mb-3">
@@ -194,10 +194,10 @@ export const Inventory = () => {
                     <span
                       className={`px-2 py-0.5 text-[10px] font-bold rounded border ${
                         item.stockout_risk === 'CRITICAL'
-                          ? 'bg-red-100 text-red-800 border-red-200'
+                          ? 'bg-rose-50 text-rose-800 border-rose-200'
                           : item.stockout_risk === 'HIGH'
-                          ? 'bg-amber-100 text-amber-900 border-amber-200'
-                          : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          ? 'bg-amber-50 text-amber-900 border-amber-200'
+                          : 'bg-forest-50 text-forest-800 border-forest-200'
                       }`}
                     >
                       {item.stockout_risk} RISK
@@ -215,7 +215,7 @@ export const Inventory = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-charcoal-500">Projected Runout:</span>
-                      <span className="font-bold text-amber-800 font-mono">
+                      <span className="font-bold text-charcoal-800 font-mono">
                         {item.projected_days_left > 30 ? '> 30 days' : `${item.projected_days_left.toFixed(1)} days`}
                       </span>
                     </div>
@@ -232,15 +232,9 @@ export const Inventory = () => {
                   </span>
                   <button
                     onClick={() => handleApproveReorder(item)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shadow-sm ${
-                      item.stockout_risk === 'CRITICAL'
-                        ? 'bg-red-700 hover:bg-red-800 text-white'
-                        : item.stockout_risk === 'HIGH'
-                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                        : 'bg-forest-800 hover:bg-forest-900 text-white'
-                    }`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shadow-sm bg-forest-800 hover:bg-forest-900 text-white"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-brass-300" />
                     Approve PO
                   </button>
                 </div>
